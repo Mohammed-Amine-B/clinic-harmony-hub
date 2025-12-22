@@ -1,117 +1,157 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { User, UserRole } from '@/types';
+import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
+import { User, Session } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
+import { UserRole } from '@/types';
+
+interface Profile {
+  id: string;
+  user_id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  avatar_url: string | null;
+}
+
+interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  avatar?: string;
+  phone?: string;
+}
 
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
+  session: Session | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string, role: UserRole) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Demo users for testing
-const demoUsers: Record<string, { password: string; user: User }> = {
-  'admin@clinic.com': {
-    password: 'admin123',
-    user: {
-      id: '1',
-      email: 'admin@clinic.com',
-      name: 'Dr. Sarah Admin',
-      role: 'admin',
-      avatar: undefined,
-      phone: '+1 234 567 890',
-      createdAt: new Date(),
-    },
-  },
-  'doctor@clinic.com': {
-    password: 'doctor123',
-    user: {
-      id: '2',
-      email: 'doctor@clinic.com',
-      name: 'Dr. Michael Chen',
-      role: 'doctor',
-      avatar: undefined,
-      phone: '+1 234 567 891',
-      createdAt: new Date(),
-    },
-  },
-  'patient@clinic.com': {
-    password: 'patient123',
-    user: {
-      id: '3',
-      email: 'patient@clinic.com',
-      name: 'Emma Wilson',
-      role: 'patient',
-      avatar: undefined,
-      phone: '+1 234 567 892',
-      createdAt: new Date(),
-    },
-  },
-};
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    const stored = localStorage.getItem('clinic_user');
-    return stored ? JSON.parse(stored) : null;
-  });
-  const [isLoading, setIsLoading] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchUserData = useCallback(async (userId: string, email: string): Promise<AuthUser | null> => {
+    try {
+      // Fetch profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      // Fetch role
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .single();
+
+      return {
+        id: userId,
+        email: email,
+        name: profile?.name || email,
+        role: (roleData?.role as UserRole) || 'patient',
+        avatar: profile?.avatar_url || undefined,
+        phone: profile?.phone || undefined,
+      };
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        
+        if (session?.user) {
+          // Defer Supabase calls with setTimeout to prevent deadlock
+          setTimeout(() => {
+            fetchUserData(session.user.id, session.user.email || '').then(userData => {
+              setUser(userData);
+              setIsLoading(false);
+            });
+          }, 0);
+        } else {
+          setUser(null);
+          setIsLoading(false);
+        }
+      }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      
+      if (session?.user) {
+        fetchUserData(session.user.id, session.user.email || '').then(userData => {
+          setUser(userData);
+          setIsLoading(false);
+        });
+      } else {
+        setIsLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [fetchUserData]);
 
   const login = useCallback(async (email: string, password: string) => {
-    setIsLoading(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const demoUser = demoUsers[email.toLowerCase()];
-    
-    if (demoUser && demoUser.password === password) {
-      setUser(demoUser.user);
-      localStorage.setItem('clinic_user', JSON.stringify(demoUser.user));
-      setIsLoading(false);
-      return;
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      throw new Error(error.message);
     }
-    
-    setIsLoading(false);
-    throw new Error('Invalid email or password');
   }, []);
 
   const register = useCallback(async (email: string, password: string, name: string, role: UserRole) => {
-    setIsLoading(true);
+    const redirectUrl = `${window.location.origin}/`;
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    if (demoUsers[email.toLowerCase()]) {
-      setIsLoading(false);
-      throw new Error('Email already exists');
-    }
-    
-    const newUser: User = {
-      id: Date.now().toString(),
+    const { error } = await supabase.auth.signUp({
       email,
-      name,
-      role,
-      createdAt: new Date(),
-    };
-    
-    setUser(newUser);
-    localStorage.setItem('clinic_user', JSON.stringify(newUser));
-    setIsLoading(false);
+      password,
+      options: {
+        emailRedirectTo: redirectUrl,
+        data: {
+          name,
+          role,
+        },
+      },
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      throw new Error(error.message);
+    }
     setUser(null);
-    localStorage.removeItem('clinic_user');
+    setSession(null);
   }, []);
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isAuthenticated: !!user,
+        session,
+        isAuthenticated: !!session,
         isLoading,
         login,
         register,
