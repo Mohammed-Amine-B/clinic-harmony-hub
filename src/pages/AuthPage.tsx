@@ -51,6 +51,11 @@ export default function AuthPage() {
     }
   };
 
+  const demoCredentials = [
+    { role: 'Admin', email: 'admin@clinic.com', password: 'admin123' },
+    { role: 'Doctor', email: 'doctor@clinic.com', password: 'doctor123' },
+    { role: 'Patient', email: 'patient@clinic.com', password: 'patient123' },
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-info/5 flex items-center justify-center p-4">
@@ -181,6 +186,27 @@ export default function AuthPage() {
               </p>
             </div>
 
+            {mode === 'login' && (
+              <div className="mt-6 pt-6 border-t border-border">
+                <p className="text-xs text-muted-foreground text-center mb-3">Demo Credentials</p>
+                <div className="space-y-2">
+                  {demoCredentials.map((cred) => (
+                    <button
+                      key={cred.role}
+                      type="button"
+                      onClick={() => {
+                        setEmail(cred.email);
+                        setPassword(cred.password);
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-muted/50 hover:bg-muted text-xs transition-colors"
+                    >
+                      <span className="font-medium">{cred.role}</span>
+                      <span className="text-muted-foreground">{cred.email}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

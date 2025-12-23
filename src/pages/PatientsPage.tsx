@@ -6,26 +6,23 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { PageHeader } from '@/components/dashboard/DashboardComponents';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import { usePatients } from '@/hooks/usePatients';
+import { mockPatients } from '@/data/mockData';
 import { useAuth } from '@/contexts/AuthContext';
 import { useState } from 'react';
-import { Skeleton } from '@/components/ui/skeleton';
+import { format } from 'date-fns';
 
 export default function PatientsPage() {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const isAdmin = user?.role === 'admin';
 
-  const { data: patients = [], isLoading, error } = usePatients();
-
-  const filteredPatients = patients.filter(
+  const filteredPatients = mockPatients.filter(
     (patient) =>
       patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       patient.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const calculateAge = (dateOfBirth: string | null) => {
-    if (!dateOfBirth) return null;
+  const calculateAge = (dateOfBirth: Date) => {
     const today = new Date();
     const birthDate = new Date(dateOfBirth);
     let age = today.getFullYear() - birthDate.getFullYear();
@@ -68,110 +65,67 @@ export default function PatientsPage() {
         </Button>
       </div>
 
-      {/* Loading State */}
-      {isLoading && (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <Card key={i} variant="elevated">
-              <CardContent className="p-6">
-                <div className="flex items-start gap-4">
-                  <Skeleton className="w-14 h-14 rounded-full" />
-                  <div className="flex-1">
-                    <Skeleton className="h-5 w-32 mb-2" />
-                    <Skeleton className="h-4 w-24" />
+      {/* Patients Grid */}
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredPatients.map((patient) => (
+          <Card key={patient.id} variant="elevated" className="overflow-hidden hover:shadow-lg transition-all duration-300">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <Avatar className="w-14 h-14">
+                  <AvatarFallback className="bg-info/10 text-info text-lg">
+                    {patient.name
+                      .split(' ')
+                      .map((n) => n[0])
+                      .join('')}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-display font-semibold truncate">{patient.name}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant="secondary" className="capitalize">
+                      {patient.gender}
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {calculateAge(patient.dateOfBirth)} years
+                    </span>
                   </div>
                 </div>
-                <Skeleton className="h-8 w-full mt-4" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+              </div>
 
-      {/* Error State */}
-      {error && (
-        <div className="text-center py-12">
-          <p className="text-destructive">Failed to load patients. Please try again.</p>
-        </div>
-      )}
+              <div className="space-y-2 mt-4">
+                <div className="flex items-center gap-2 text-sm">
+                  <Mail className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-muted-foreground truncate">{patient.email}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <Phone className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">{patient.phone}</span>
+                </div>
+              </div>
 
-      {/* Empty State */}
-      {!isLoading && !error && filteredPatients.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">No patients found.</p>
-        </div>
-      )}
+              {patient.bloodGroup && (
+                <div className="flex items-center gap-2 mt-4">
+                  <Badge variant="coral">Blood: {patient.bloodGroup}</Badge>
+                  {patient.allergies && patient.allergies.length > 0 && (
+                    <Badge variant="warning">{patient.allergies.length} Allergies</Badge>
+                  )}
+                </div>
+              )}
 
-      {/* Patients Grid */}
-      {!isLoading && !error && filteredPatients.length > 0 && (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredPatients.map((patient) => {
-            const age = calculateAge(patient.date_of_birth);
-            return (
-              <Card key={patient.id} variant="elevated" className="overflow-hidden hover:shadow-lg transition-all duration-300">
-                <CardContent className="p-6">
-                  <div className="flex items-start gap-4">
-                    <Avatar className="w-14 h-14">
-                      <AvatarFallback className="bg-info/10 text-info text-lg">
-                        {patient.name
-                          .split(' ')
-                          .map((n) => n[0])
-                          .join('')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-display font-semibold truncate">{patient.name}</h3>
-                      <div className="flex items-center gap-2 mt-1">
-                        {patient.gender && (
-                          <Badge variant="secondary" className="capitalize">
-                            {patient.gender}
-                          </Badge>
-                        )}
-                        {age !== null && (
-                          <span className="text-sm text-muted-foreground">
-                            {age} years
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 mt-4">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Mail className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-muted-foreground truncate">{patient.email}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Phone className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">{patient.phone || 'No phone'}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 mt-4">
-                    {patient.blood_group && (
-                      <Badge variant="coral">Blood: {patient.blood_group}</Badge>
-                    )}
-                    {patient.allergies && patient.allergies.length > 0 && (
-                      <Badge variant="warning">{patient.allergies.length} Allergies</Badge>
-                    )}
-                  </div>
-
-                  <div className="flex gap-3 mt-4 pt-4 border-t border-border">
-                    <Button variant="outline" className="flex-1" size="sm">
-                      <FileText className="w-4 h-4 mr-1" />
-                      Records
-                    </Button>
-                    <Button variant="default" className="flex-1" size="sm">
-                      <Calendar className="w-4 h-4 mr-1" />
-                      Appointment
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+              <div className="flex gap-3 mt-4 pt-4 border-t border-border">
+                <Button variant="outline" className="flex-1" size="sm">
+                  <FileText className="w-4 h-4 mr-1" />
+                  Records
+                </Button>
+                <Button variant="default" className="flex-1" size="sm">
+                  <Calendar className="w-4 h-4 mr-1" />
+                  Appointment
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </DashboardLayout>
   );
 }
